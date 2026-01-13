@@ -15,7 +15,11 @@
 #include <time.h>
 #include <sqlite3.h>
 #include <Arduino.h>
+#if defined(__has_include) && __has_include(<spi_flash_mmap.h>)
+#include <spi_flash_mmap.h>
+#else
 #include <esp_spi_flash.h>
+#endif
 #include <sys/stat.h>
 #include <assert.h>
 #include <sys/types.h>
