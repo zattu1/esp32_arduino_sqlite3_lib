@@ -450,17 +450,14 @@ static int ESP32Open(
   //p->fd = open(zName, oflags, 0600);
   //p->fd = open(zName, oflags, S_IRUSR | S_IWUSR);
   if (zName == 0) {
-    //generate a temporary file name
-    char *tName = tmpnam(NULL);
-    tName[4] = '_';
-    size_t len = strlen(dbrootpath);
-    memmove(tName + len, tName, strlen(tName) + 1);
-    memcpy(tName, dbrootpath, len);    
+    // generate temporary file in database directory (avoid /tmp dependency)
+    const char *root = (dbrootpath[0] != '\0') ? dbrootpath : "/sdcard";
+    char tName[MAXPATHNAME+1];
+    sqlite3_snprintf(MAXPATHNAME, tName, "%s/.sqlite_tmp_%ld_%d", root, (long)time(NULL), rand());
+    tName[MAXPATHNAME] = '\0';
     p->fp = fopen(tName, mode);
-    //https://stackoverflow.com/questions/64424287/how-to-delete-a-file-in-c-using-a-file-descriptor
-    //for temp file, then no need to handle in esp32close
+    // for temp file, then no need to handle in esp32close
     unlink(tName);
-    //Serial.println("Temporary file name generated: " + String(tName) + " mode: " + String(mode));
   } else {
     //detect database root as folder for temporary files, every newly openened db will change this path
     //this mainly fixes that vfs's have their own root name like /sd
@@ -469,15 +466,18 @@ static int ESP32Open(
     if (ext) {
       isdb = (strcmp(ext+1,"db") == 0);
     }
-    if (isdb) {      
+    if (isdb) {
       char zDir[MAXPATHNAME+1];
-      int i=0;
-      strcpy(zDir,zName);
+      int i = 0;
+      strcpy(zDir, zName);
 
-      for(i=1; zDir[i]!='/'; i++) {};
-      zDir[i] = '\0';
-
-      strcpy(dbrootpath, zDir);
+      for (i = (int)strlen(zDir) - 1; i > 0 && zDir[i] != '/'; --i) {}
+      if (i > 0) {
+        zDir[i] = '\0';
+        strcpy(dbrootpath, zDir);
+      } else {
+        strcpy(dbrootpath, "/sdcard");
+      }
     }
 
     p->fp = fopen(zName, mode);
@@ -486,7 +486,7 @@ static int ESP32Open(
   if( p->fp == NULL){
     if (aBuf)
       sqlite3_free(aBuf);
-    //Serial.println("Can't open");
+    Serial.printf("[Sqlite3Esp32 VFS] fopen failed: zName=%s mode=%s flags=0x%x errno=%d\n", zName ? zName : "(null)", mode, flags, errno);
     return SQLITE_CANTOPEN;
   }
   p->aBuffer = aBuf;
